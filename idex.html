@@ -3,316 +3,373 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Replatforming Plan - Gantt</title>
-    
+    <title>Gantt Dashboard - Live Replatforming Plan V1.0</title>
+    <!-- Ładowanie Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
     <style>
-        /* Niestandardowy pasek przewijania dla lepszego wyglądu */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        body { margin: 0; overflow: hidden; }
+        /* Stylizacja scrollbara i zamrożonych kolumn/nagłówków */
+        body { margin: 0; overflow: hidden; background-color: #f8fafc; font-family: 'Inter', sans-serif; }
+        .table-wrapper { overflow: auto; height: calc(100vh - 72px); }
+        
+        /* Zamrożenie nagłówka tabeli (T1-T16) na górze */
+        thead th { position: sticky; top: 0; z-index: 20; background-color: #1e293b; color: white; }
+        
+        /* Zamrożenie pierwszej kolumny (Struktura Zadań) po lewej stronie */
+        tbody td:first-child, thead th:first-child {
+            position: sticky; 
+            left: 0; 
+            z-index: 30;
+            background-color: white; 
+            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+        }
+        thead th:first-child { z-index: 40; background-color: #0f172a; }
+        
+        /* Klasy wierszy hierarchii */
+        .row-ws td { background-color: #e2e8f0 !important; font-weight: 700; color: #1e293b; }
+        .row-act td { background-color: #f1f5f9 !important; font-weight: 600; color: #475569; padding-left: 1.5rem !important; }
+        .row-task:hover td { background-color: #f8fafc !important; }
+        
+        /* Płynne wysuwanie panelu bocznego */
+        #side-panel { transform: translateX(100%); transition: transform 0.3s ease-in-out; }
+        #side-panel.open { transform: translateX(0); }
+        
+        /* Powiadomienie Toast */
+        #toast { transform: translateY(150%); transition: transform 0.3s ease-in-out; }
+        #toast.show { transform: translateY(0); }
     </style>
 </head>
-<body class="bg-gray-50">
-    <div id="root"></div>
+<body class="text-slate-800">
 
-    <script type="text/babel">
-        const { useState, useMemo } = React;
+    <!-- Pasek nawigacji górnej -->
+    <header class="bg-slate-900 text-white h-[72px] px-6 flex justify-between items-center shadow-md shrink-0 relative z-50">
+        <div>
+            <h1 class="text-xl font-bold tracking-wide">Live Replatforming Plan V1.0</h1>
+            <p class="text-xs text-slate-400 font-medium mt-0.5">Struktura: Workstream &rarr; Activity &rarr; Task | Oś czasu: T1 - T16</p>
+        </div>
+        <button onclick="exportToCSV()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 text-sm font-semibold transition-all">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+            Eksportuj CSV
+        </button>
+    </header>
 
-        // Zamienniki dla ikon Lucide-React w czystym SVG
-        const ChevronDown = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="6 9 12 15 18 9"/></svg>;
-        const ChevronRight = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="9 18 15 12 9 6"/></svg>;
-        const AlertTriangle = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
-        const LinkIcon = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>;
-        const Edit = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
-        const Save = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>;
-        const X = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
-        const CheckCircle2 = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>;
-        const BarChart3 = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>;
+    <!-- Główny obszar wykresu -->
+    <main class="relative w-full flex">
+        <div class="table-wrapper w-full bg-white relative">
+            <table class="w-full border-collapse whitespace-nowrap min-w-max">
+                <thead>
+                    <tr>
+                        <th class="p-3 text-left text-sm w-[400px] border-b border-slate-700">Struktura Projektu</th>
+                        <!-- Hardkodowane nagłówki T1-T16 dla bezpieczeństwa DOM -->
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T1</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T2</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T3</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T4</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T5</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T6</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T7</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T8</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T9</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T10</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T11</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T12</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T13</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T14</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T15</th>
+                        <th class="p-2 w-12 border-b border-l border-slate-700 text-xs text-center">T16</th>
+                    </tr>
+                </thead>
+                <tbody id="gantt-body">
+                    <!-- Javascript wypełni ten obszar wierszami -->
+                </tbody>
+            </table>
+        </div>
 
-        const TIME_COLUMNS = Array.from({ length: 16 }, (_, i) => `T${i + 1}`);
+        <!-- Panel boczny (RAID i Status) -->
+        <div id="side-panel" class="fixed top-[72px] right-0 w-96 h-[calc(100vh-72px)] bg-white shadow-2xl z-50 flex flex-col border-l border-slate-200">
+            <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
+                <h2 class="font-bold text-slate-800 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                    Aktualizacja Zadania
+                </h2>
+                <button onclick="closePanel()" class="text-slate-400 hover:text-slate-700 p-1 rounded-md transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-1 flex flex-col gap-6">
+                <input type="hidden" id="task-id">
+                
+                <!-- Informacje o zadaniu -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Nazwa Zadania</label>
+                    <div id="task-name-display" class="text-base font-semibold text-slate-800 bg-slate-50 p-3 rounded-lg border border-slate-200"></div>
+                </div>
 
-        const initialTasks = [
-          { id: '1', workstream: '1. Core Platform', activity: '1.1 Infrastructure', task: 'Setup Cloud Environments (Dev, Stage)', startCol: 0, endCol: 2, progress: 100, risks: '', dependencies: '' },
-          { id: '2', workstream: '1. Core Platform', activity: '1.1 Infrastructure', task: 'Configure CI/CD Pipelines', startCol: 1, endCol: 3, progress: 75, risks: 'Możliwe opóźnienia w dostępie do repozytoriów security.', dependencies: 'Zależność od zespołu DevOps' },
-          { id: '3', workstream: '1. Core Platform', activity: '1.2 Database Migration', task: 'Data Mapping & Profiling', startCol: 2, endCol: 5, progress: 30, risks: '', dependencies: 'Wymaga zrzutu danych z systemu Legacy' },
-          { id: '4', workstream: '1. Core Platform', activity: '1.2 Database Migration', task: 'Initial Data Load (UAT)', startCol: 5, endCol: 7, progress: 0, risks: 'Ryzyko niskiej jakości danych', dependencies: '' },
-          { id: '5', workstream: '2. Common Services', activity: '2.1 API Gateway', task: 'API Gateway Architecture Design', startCol: 0, endCol: 2, progress: 100, risks: '', dependencies: '' },
-          { id: '6', workstream: '2. Common Services', activity: '2.1 API Gateway', task: 'Implementation of Authentication APIs', startCol: 3, endCol: 8, progress: 40, risks: 'Złożoność integracji z systemem SSO', dependencies: 'API Gateway Design' },
-          { id: '7', workstream: '2. Common Services', activity: '2.2 Microservices', task: 'User Management Service', startCol: 4, endCol: 9, progress: 10, risks: '', dependencies: '' },
-          { id: '8', workstream: '3. Frontend & VOC', activity: '3.1 UI Framework', task: 'Design System Implementation', startCol: 1, endCol: 6, progress: 60, risks: '', dependencies: '' },
-          { id: '9', workstream: '3. Frontend & VOC', activity: '3.2 VOC Implementation', task: 'Voice of Customer Dashboard', startCol: 7, endCol: 12, progress: 0, risks: 'Brak zatwierdzonych makiet', dependencies: 'Wymaga zatwierdzenia Design Systemu' },
-          { id: '10', workstream: '3. Frontend & VOC', activity: '3.2 VOC Implementation', task: 'User Feedback Forms', startCol: 9, endCol: 14, progress: 0, risks: '', dependencies: 'API Gateway' },
-          { id: '11', workstream: '4. Testing & QA', activity: '4.1 E2E Testing', task: 'Test Scenarios Definition', startCol: 8, endCol: 11, progress: 0, risks: '', dependencies: '' },
-          { id: '12', workstream: '4. Testing & QA', activity: '4.1 E2E Testing', task: 'UAT Execution', startCol: 12, endCol: 15, progress: 0, risks: 'Ryzyko braku zasobów biznesowych na testy', dependencies: 'Wszystkie moduły Core i Frontend' },
+                <!-- Postęp -->
+                <div class="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
+                    <div class="flex justify-between items-center mb-3">
+                        <label class="text-sm font-semibold text-slate-800">Postęp realizacji</label>
+                        <span id="progress-val" class="text-lg font-bold text-blue-600">0%</span>
+                    </div>
+                    <input type="range" id="task-progress" min="0" max="100" step="5" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600" oninput="document.getElementById('progress-val').innerText = this.value + '%'">
+                </div>
+
+                <!-- Ryzyka -->
+                <div>
+                    <label class="flex items-center gap-2 text-sm font-bold text-orange-600 uppercase tracking-wider mb-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                        Ryzyka (Risks)
+                    </label>
+                    <textarea id="task-risks" rows="3" class="w-full border border-orange-200 bg-orange-50/30 rounded-lg p-3 text-sm focus:ring-2 focus:ring-orange-300 outline-none resize-none" placeholder="Brak zidentyfikowanych ryzyk..."></textarea>
+                </div>
+
+                <!-- Zależności -->
+                <div>
+                    <label class="flex items-center gap-2 text-sm font-bold text-purple-600 uppercase tracking-wider mb-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                        Zależności (Dependencies)
+                    </label>
+                    <textarea id="task-deps" rows="2" class="w-full border border-purple-200 bg-purple-50/30 rounded-lg p-3 text-sm focus:ring-2 focus:ring-purple-300 outline-none resize-none" placeholder="Czego brakuje by ruszyć dalej?"></textarea>
+                </div>
+            </div>
+
+            <!-- Stopka panelu -->
+            <div class="p-5 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 shrink-0">
+                <button onclick="closePanel()" class="px-5 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors">Anuluj</button>
+                <button onclick="saveTask()" class="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg shadow hover:bg-blue-700 transition-colors">Zapisz status</button>
+            </div>
+        </div>
+        
+        <!-- Overlay (Ciemne tło przy otwartym panelu) -->
+        <div id="panel-overlay" onclick="closePanel()" class="fixed inset-0 top-[72px] bg-slate-900/20 z-40 hidden backdrop-blur-sm transition-all"></div>
+    </main>
+
+    <!-- Komunikat pomyślnego zapisu/eksportu -->
+    <div id="toast" class="fixed bottom-6 right-6 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 z-[100]">
+        <svg class="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <span id="toast-msg" class="font-medium text-sm">Zapisano pomyślnie.</span>
+    </div>
+
+    <script>
+        // Solidna, zagnieżdżona struktura danych odzwierciedlająca model z CSV
+        const projectData = [
+            {
+                workstream: "1. Core Platform Replatforming",
+                activities: [
+                    {
+                        activity: "1.1 Discovery & Requirements",
+                        tasks: [
+                            { id: "t1", name: "Stakeholder Interviews", start: 1, end: 3, progress: 100, risks: "", deps: "" },
+                            { id: "t2", name: "Define As-Is Architecture", start: 2, end: 4, progress: 65, risks: "Brak dostępu do repozytoriów security", deps: "Wymaga zakończenia t1" },
+                            { id: "t3", name: "To-Be Architecture Sign-off", start: 4, end: 5, progress: 0, risks: "", deps: "t2" }
+                        ]
+                    },
+                    {
+                        activity: "1.2 Environment Setup",
+                        tasks: [
+                            { id: "t4", name: "Cloud Infrastructure Provisioning", start: 5, end: 7, progress: 20, risks: "Wydłużony czas oczekiwania na instancje bazodanowe", deps: "Zgody finansowe" },
+                            { id: "t5", name: "CI/CD Pipeline Configuration", start: 6, end: 8, progress: 0, risks: "", deps: "t4" }
+                        ]
+                    }
+                ]
+            },
+            {
+                workstream: "2. Common VOC Implementation",
+                activities: [
+                    {
+                        activity: "2.1 Survey Design",
+                        tasks: [
+                            { id: "t6", name: "Drafting Base Questions", start: 3, end: 5, progress: 100, risks: "", deps: "" },
+                            { id: "t7", name: "Localization & Translation (APAC/EMEA)", start: 5, end: 8, progress: 40, risks: "Opóźnienia agencji tłumaczeń zewnętrznych", deps: "t6" }
+                        ]
+                    },
+                    {
+                        activity: "2.2 API Integration",
+                        tasks: [
+                            { id: "t8", name: "CRM Data Mapping", start: 8, end: 11, progress: 10, risks: "", deps: "Gotowa architektura" },
+                            { id: "t9", name: "End-to-End UAT Testing", start: 12, end: 15, progress: 0, risks: "Ryzyko niedostępności testerów biznesowych", deps: "t8" },
+                            { id: "t10", name: "Go-Live Decision & Rollout", start: 15, end: 16, progress: 0, risks: "", deps: "t9" }
+                        ]
+                    }
+                ]
+            }
         ];
 
-        function App() {
-          const [tasks, setTasks] = useState(initialTasks);
-          const [expandedWorkstreams, setExpandedWorkstreams] = useState({});
-          const [expandedActivities, setExpandedActivities] = useState({});
-          const [selectedTask, setSelectedTask] = useState(null);
-          const [editForm, setEditForm] = useState(null);
+        // Globalna mapa ułatwiająca wyszukiwanie zadania po ID
+        const taskMap = {};
 
-          const groupedData = useMemo(() => {
-            const grouped = {};
-            tasks.forEach(task => {
-              if (!grouped[task.workstream]) grouped[task.workstream] = {};
-              if (!grouped[task.workstream][task.activity]) grouped[task.workstream][task.activity] = [];
-              grouped[task.workstream][task.activity].push(task);
-            });
-            return grouped;
-          }, [tasks]);
+        // Funkcja renderująca HTML na podstawie danych
+        function renderGanttChart() {
+            const tbody = document.getElementById('gantt-body');
+            let htmlContent = '';
 
-          const toggleWorkstream = (ws) => setExpandedWorkstreams(prev => ({ ...prev, [ws]: !prev[ws] }));
-          const toggleActivity = (act) => setExpandedActivities(prev => ({ ...prev, [act]: !prev[act] }));
-          
-          const handleTaskClick = (task) => {
-            setSelectedTask(task);
-            setEditForm({ ...task });
-          };
-
-          const handleSaveTask = () => {
-            setTasks(prev => prev.map(t => t.id === editForm.id ? editForm : t));
-            setSelectedTask(null);
-            setEditForm(null);
-          };
-
-          const getStatusColor = (progress) => {
-            if (progress === 100) return 'bg-emerald-500';
-            if (progress > 0) return 'bg-blue-500';
-            return 'bg-gray-300';
-          };
-
-          const overallProgress = useMemo(() => {
-            if (tasks.length === 0) return 0;
-            const total = tasks.reduce((acc, task) => acc + parseInt(task.progress || 0), 0);
-            return Math.round(total / tasks.length);
-          }, [tasks]);
-
-          const activeRisks = tasks.filter(t => t.risks && t.risks.length > 0).length;
-
-          return (
-            <div className="h-screen bg-gray-50 p-4 font-sans text-slate-800 flex flex-col">
-              <header className="bg-white rounded-xl shadow-sm p-4 md:p-6 mb-4 border border-slate-200 shrink-0">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                  <div>
-                    <h1 className="text-xl md:text-2xl font-bold text-slate-900 flex items-center gap-2">
-                      <BarChart3 className="text-blue-600" size={24} />
-                      Live Replatforming Plan
-                    </h1>
-                    <p className="text-slate-500 text-sm mt-1">Interaktywny widok Gantt / Rejestr RAID</p>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 flex flex-col items-center min-w-[100px] md:min-w-[120px]">
-                      <span className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Postęp</span>
-                      <span className="text-xl font-bold text-blue-900">{overallProgress}%</span>
-                    </div>
-                    <div className="bg-amber-50 px-4 py-2 rounded-lg border border-amber-100 flex flex-col items-center min-w-[100px] md:min-w-[120px]">
-                      <span className="text-xs font-semibold text-amber-600 uppercase tracking-wider">Ryzyka</span>
-                      <span className="text-xl font-bold text-amber-900 flex items-center gap-1">
-                        <AlertTriangle size={18} className="text-amber-600"/> {activeRisks}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </header>
-
-              <div className="flex-1 flex gap-4 overflow-hidden">
-                <div className={`flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden transition-all duration-300 ${selectedTask ? 'hidden lg:flex w-2/3' : 'w-full'}`}>
-                  
-                  <div className="flex border-b border-slate-200 bg-slate-50">
-                    <div className="w-[300px] md:w-[450px] flex-shrink-0 border-r border-slate-200 p-3 font-semibold text-sm text-slate-700">
-                      Struktura Projektu
-                    </div>
-                    <div className="flex-1 flex overflow-hidden">
-                      {TIME_COLUMNS.map((col, idx) => (
-                        <div key={idx} className="flex-1 min-w-[30px] md:min-w-[40px] border-r border-slate-200 p-2 text-center text-xs font-semibold text-slate-500">
-                          {col}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="overflow-y-auto flex-1 pb-10">
-                    {Object.entries(groupedData).map(([workstream, activities]) => {
-                      const isWsExpanded = expandedWorkstreams[workstream] !== false;
-                      
-                      return (
-                        <React.Fragment key={workstream}>
-                          <div className="flex bg-slate-800 text-white border-b border-slate-700">
-                            <div className="w-[300px] md:w-[450px] flex-shrink-0 p-2 text-sm font-bold flex items-center gap-2 cursor-pointer hover:bg-slate-700 transition-colors" onClick={() => toggleWorkstream(workstream)}>
-                              {isWsExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                              <span className="truncate">{workstream}</span>
-                            </div>
-                            <div className="flex-1 bg-slate-100/10"></div>
-                          </div>
-
-                          {isWsExpanded && Object.entries(activities).map(([activity, wTasks]) => {
-                            const isActExpanded = expandedActivities[activity] !== false;
-
-                            return (
-                              <React.Fragment key={activity}>
-                                <div className="flex bg-slate-100 border-b border-slate-200">
-                                  <div className="w-[300px] md:w-[450px] flex-shrink-0 p-2 pl-6 md:pl-8 text-sm font-semibold text-slate-700 flex items-center gap-2 cursor-pointer hover:bg-slate-200 transition-colors" onClick={() => toggleActivity(activity)}>
-                                    {isActExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                    <span className="truncate">{activity}</span>
-                                  </div>
-                                  <div className="flex-1 border-b border-slate-100"></div>
-                                </div>
-
-                                {isActExpanded && wTasks.map(task => {
-                                  const hasRisk = task.risks && task.risks.length > 0;
-                                  const hasDep = task.dependencies && task.dependencies.length > 0;
-                                  
-                                  return (
-                                    <div key={task.id} className={`flex border-b border-slate-100 group cursor-pointer hover:bg-blue-50 transition-colors ${selectedTask?.id === task.id ? 'bg-blue-50' : ''}`} onClick={() => handleTaskClick(task)}>
-                                      <div className="w-[300px] md:w-[450px] flex-shrink-0 border-r border-slate-200 p-2 pl-10 md:pl-14 flex items-center justify-between">
-                                        <span className="text-sm text-slate-600 truncate mr-2 font-medium" title={task.task}>{task.task}</span>
-                                        <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
-                                          {hasDep && <LinkIcon size={14} className="text-blue-400" title="Posiada zależności" />}
-                                          {hasRisk && <AlertTriangle size={14} className="text-amber-500" title="Zgłoszone ryzyko" />}
-                                          <span className="text-xs font-bold text-slate-400 w-8 md:w-10 text-right">{task.progress}%</span>
+            projectData.forEach(ws => {
+                // Wiersz poziomu Workstream
+                htmlContent += `
+                    <tr class="row-ws border-b border-slate-300">
+                        <td colspan="17" class="p-3 text-sm tracking-wide shadow-sm">${ws.workstream}</td>
+                    </tr>`;
+                
+                ws.activities.forEach(act => {
+                    // Wiersz poziomu Activity
+                    htmlContent += `
+                        <tr class="row-act border-b border-slate-200">
+                            <td colspan="17" class="p-2 text-sm border-l-4 border-slate-400">${act.activity}</td>
+                        </tr>`;
+                    
+                    act.tasks.forEach(task => {
+                        // Rejestracja w mapie
+                        taskMap[task.id] = task;
+                        
+                        const hasRisk = task.risks && task.risks.trim().length > 0;
+                        const riskBadge = hasRisk ? `<span class="bg-orange-100 text-orange-600 rounded-full px-2 py-0.5 ml-2 font-bold text-[10px]" title="Zidentyfikowano Ryzyko">⚠️ RAID</span>` : '';
+                        const isDone = task.progress === 100;
+                        const textColor = isDone ? 'text-slate-400 line-through' : 'text-slate-700';
+                        
+                        htmlContent += `
+                            <tr class="row-task border-b border-slate-100 group cursor-pointer transition-colors" onclick="openPanel('${task.id}')">
+                                <td class="p-3 pl-[3rem] text-sm ${textColor} border-r border-slate-200 bg-white group-hover:bg-blue-50/30 transition-colors">
+                                    <div class="flex items-center justify-between w-full">
+                                        <span class="truncate pr-4">${task.name}</span>
+                                        <div class="flex items-center gap-2 flex-shrink-0">
+                                            ${riskBadge}
+                                            <span class="text-xs font-bold ${isDone ? 'text-emerald-500' : 'text-blue-500'} w-8 text-right">${task.progress}%</span>
                                         </div>
-                                      </div>
-
-                                      <div className="flex-1 flex relative py-1">
-                                        {TIME_COLUMNS.map((_, idx) => (
-                                          <div key={idx} className="flex-1 border-r border-slate-100 border-dashed"></div>
-                                        ))}
-                                        
-                                        <div 
-                                          className={`absolute top-2 bottom-2 rounded-md shadow-sm flex items-center px-1 md:px-2 text-[10px] md:text-xs text-white font-medium overflow-hidden ${getStatusColor(task.progress)} opacity-90 group-hover:opacity-100 transition-all`}
-                                          style={{
-                                            left: `${(task.startCol / 16) * 100}%`,
-                                            width: `${((task.endCol - task.startCol + 1) / 16) * 100}%`
-                                          }}
-                                        >
-                                          {task.progress === 100 && <CheckCircle2 size={12} className="mr-1 hidden md:block opacity-70" />}
-                                          <div className="absolute bottom-0 left-0 h-1 bg-white/30" style={{ width: `${task.progress}%` }}></div>
-                                        </div>
-                                      </div>
                                     </div>
-                                  );
-                                })}
-                              </React.Fragment>
-                            );
-                          })}
-                        </React.Fragment>
-                      );
-                    })}
-                  </div>
-                </div>
+                                </td>`;
+                        
+                        // Generowanie 16 komórek czasu (T1-T16)
+                        const duration = task.end - task.start + 1;
+                        for(let i = 1; i <= 16; i++) {
+                            if (i >= task.start && i <= task.end) {
+                                // Komórka w zakresie zadania
+                                let isStart = i === task.start;
+                                let isEnd = i === task.end;
+                                
+                                // Określanie zaokrągleń na krawędziach
+                                let roundClass = '';
+                                if(isStart) roundClass += ' rounded-l-md';
+                                if(isEnd) roundClass += ' rounded-r-md';
 
-                {}
-                {selectedTask && (
-                  <div className="w-full lg:w-1/3 bg-white rounded-xl shadow-lg border border-slate-200 flex flex-col overflow-hidden transition-all">
-                    <div className="bg-slate-800 text-white p-4 flex justify-between items-center shrink-0">
-                      <h2 className="font-bold text-sm flex items-center gap-2">
-                        <Edit size={16} /> Edycja Zadania i RAID
-                      </h2>
-                      <button onClick={() => setSelectedTask(null)} className="hover:bg-slate-700 p-1 rounded-md transition-colors">
-                        <X size={18} />
-                      </button>
-                    </div>
+                                // Określanie koloru paska na podstawie % progresu
+                                let passedCells = (task.progress / 100) * duration;
+                                let currentCellIndex = i - task.start + 1;
+                                
+                                // Jeśli komórka mieści się w zrobionym postępie = ciemny niebieski. Inaczej jasny.
+                                let bgClass = (currentCellIndex <= passedCells + 0.2) ? 'bg-blue-500' : 'bg-blue-200';
+                                if (isDone) bgClass = 'bg-emerald-500'; // Jeśli 100%, cały zielony
 
-                    <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-5">
-                      <div>
-                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Lokalizacja</p>
-                        <div className="text-sm text-slate-700">{editForm.workstream} &rarr; {editForm.activity}</div>
-                      </div>
-                      
-                      <div>
-                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Nazwa Zadania</p>
-                        <div className="text-lg font-bold text-slate-900">{editForm.task}</div>
-                      </div>
+                                htmlContent += `
+                                    <td class="p-1 border-r border-slate-100/50">
+                                        <div class="h-7 w-full ${bgClass} ${roundClass} shadow-sm group-hover:opacity-80 transition-opacity"></div>
+                                    </td>`;
+                            } else {
+                                // Pusta komórka
+                                htmlContent += `<td class="border-r border-slate-100 bg-slate-50/20"></td>`;
+                            }
+                        }
+                        
+                        htmlContent += `</tr>`;
+                    });
+                });
+            });
 
-                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <div className="flex justify-between items-center mb-2">
-                          <label className="text-sm font-semibold text-slate-800">Postęp realizacji</label>
-                          <span className="text-lg font-bold text-blue-600">{editForm.progress}%</span>
-                        </div>
-                        <input 
-                          type="range" min="0" max="100" step="5"
-                          value={editForm.progress}
-                          onChange={(e) => setEditForm({...editForm, progress: parseInt(e.target.value)})}
-                          className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-xs font-semibold text-slate-500 uppercase">Start (T1-T16)</label>
-                          <select 
-                            value={editForm.startCol}
-                            onChange={(e) => setEditForm({...editForm, startCol: parseInt(e.target.value)})}
-                            className="mt-1 block w-full rounded-md border border-slate-300 p-2 text-sm bg-white outline-none"
-                          >
-                            {TIME_COLUMNS.map((col, idx) => <option key={idx} value={idx}>{col}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-slate-500 uppercase">Koniec (T1-T16)</label>
-                          <select 
-                            value={editForm.endCol}
-                            onChange={(e) => setEditForm({...editForm, endCol: parseInt(e.target.value)})}
-                            className="mt-1 block w-full rounded-md border border-slate-300 p-2 text-sm bg-white outline-none"
-                          >
-                            {TIME_COLUMNS.map((col, idx) => <option key={idx} value={idx}>{col}</option>)}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="flex items-center gap-2 text-sm font-semibold text-amber-700 mb-2">
-                          <AlertTriangle size={16} /> Ryzyka (Risks/Issues)
-                        </label>
-                        <textarea 
-                          rows="3"
-                          value={editForm.risks}
-                          onChange={(e) => setEditForm({...editForm, risks: e.target.value})}
-                          placeholder="Opisz zagrożenia lub powody opóźnienia..."
-                          className="w-full rounded-md border border-amber-200 bg-amber-50/30 p-3 text-sm outline-none resize-none"
-                        ></textarea>
-                      </div>
-
-                      <div>
-                        <label className="flex items-center gap-2 text-sm font-semibold text-blue-700 mb-2">
-                          <LinkIcon size={16} /> Zależności (Dependencies)
-                        </label>
-                        <textarea 
-                          rows="2"
-                          value={editForm.dependencies}
-                          onChange={(e) => setEditForm({...editForm, dependencies: e.target.value})}
-                          placeholder="Wypisz od kogo/czego zależy to zadanie..."
-                          className="w-full rounded-md border border-blue-200 bg-blue-50/30 p-3 text-sm outline-none resize-none"
-                        ></textarea>
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3 shrink-0">
-                      <button onClick={() => setSelectedTask(null)} className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
-                        Anuluj
-                      </button>
-                      <button onClick={handleSaveTask} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm">
-                        <Save size={16} /> Zapisz Zmiany
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
+            tbody.innerHTML = htmlContent;
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        // Obsługa interfejsu (Panel)
+        function openPanel(taskId) {
+            const task = taskMap[taskId];
+            if (!task) return;
+
+            document.getElementById('task-id').value = task.id;
+            document.getElementById('task-name-display').innerText = task.name;
+            document.getElementById('task-progress').value = task.progress;
+            document.getElementById('progress-val').innerText = task.progress + '%';
+            document.getElementById('task-risks').value = task.risks;
+            document.getElementById('task-deps').value = task.deps;
+
+            document.getElementById('side-panel').classList.add('open');
+            document.getElementById('panel-overlay').classList.remove('hidden');
+        }
+
+        function closePanel() {
+            document.getElementById('side-panel').classList.remove('open');
+            document.getElementById('panel-overlay').classList.add('hidden');
+        }
+
+        function saveTask() {
+            const taskId = document.getElementById('task-id').value;
+            const task = taskMap[taskId];
+            
+            if (task) {
+                task.progress = parseInt(document.getElementById('task-progress').value, 10);
+                task.risks = document.getElementById('task-risks').value;
+                task.deps = document.getElementById('task-deps').value;
+                
+                // Przeładuj wykres, aby pokazać nowe % i ryzyka
+                renderGanttChart();
+                closePanel();
+                showToast("Status zadania został zaktualizowany.");
+            }
+        }
+
+        // Powiadomienie "Toast" (zastępuje systemowe alert())
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-msg').innerText = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // Eksport do pliku CSV
+        function exportToCSV() {
+            let csvContent = "Workstream,Activity,Task,Start Week,End Week,Progress (%),Risks,Dependencies\n";
+            
+            projectData.forEach(ws => {
+                ws.activities.forEach(act => {
+                    act.tasks.forEach(task => {
+                        // Zabezpieczenie ciągów znaków (usunięcie przecinków wewnątrz tekstu)
+                        const escapeCSV = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+                        
+                        const row = [
+                            escapeCSV(ws.workstream),
+                            escapeCSV(act.activity),
+                            escapeCSV(task.name),
+                            `T${task.start}`,
+                            `T${task.end}`,
+                            task.progress,
+                            escapeCSV(task.risks),
+                            escapeCSV(task.deps)
+                        ];
+                        
+                        csvContent += row.join(",") + "\n";
+                    });
+                });
+            });
+
+            // Tworzenie i pobieranie pliku (BOM dla poprawnego odczytu UTF-8 w Excelu)
+            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); 
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute("href", url);
+            link.setAttribute("download", "Live_Replatforming_Plan_Export.csv");
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showToast("Plik CSV został pomyślnie pobrany.");
+        }
+
+        // Inicjalizacja wykresu po załadowaniu strony
+        document.addEventListener('DOMContentLoaded', () => {
+            renderGanttChart();
+        });
     </script>
 </body>
 </html>
