@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gantt Dashboard - Live Replatforming Plan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; }
+        .table-container { overflow-x: auto; max-height: calc(100vh - 120px); }
+        th { position: sticky; top: 0; background-color: #1e293b; color: white; z-index: 10; font-size: 0.85rem;}
+        td, th { min-width: 40px; text-align: center; }
+        td:first-child, th:first-child { min-width: 350px; text-align: left; position: sticky; left: 0; z-index: 20; background-color: white; border-right: 2px solid #cbd5e1; }
+        th:first-child { background-color: #1e293b; z-index: 30; }
+        .row-workstream td { background-color: #e2e8f0; font-weight: 700; color: #334155; text-align: left; position: sticky; left:0;}
+        .row-activity td { background-color: #f1f5f9; font-weight: 600; color: #475569; padding-left: 1.5rem; text-align: left; position: sticky; left:0;}
+        .task-cell { cursor: pointer; transition: background-color 0.2s; padding-left: 2.5rem !important;}
+        .task-row:hover td:first-child { background-color: #f8fafc; }
+        .bar-planned { background-color: #bfdbfe; }
+        .bar-progress { background-color: #2563eb; }
+        
+        #side-panel { transform: translateX(100%); transition: transform 0.3s ease-in-out; }
+        #side-panel.open { transform: translateX(0); }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <header class="bg-slate-800 text-white p-4 flex justify-between items-center shadow-md z-40 relative">
+        <div>
+            <h1 class="text-xl font-bold">Dashboard Projektowy: Live Replatforming Plan</h1>
+            <p class="text-xs text-slate-300">Wizualizacja kolumn A-C (Zadania) oraz O-AD (Timeline T1-T16)</p>
+        </div>
+        <button onclick="exportCSV()" class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 text-sm font-semibold transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Eksportuj do CSV
+        </button>
+    </header>
+
+    <main class="flex-1 flex relative overflow-hidden">
+        
+        <div class="flex-1 table-container relative w-full h-full pb-10">
+            <table class="w-full border-collapse">
+                <thead>
+                    <tr id="gantt-header">
+                        <th class="p-3 border-b border-slate-600">Struktura Zadań (Workstream > Activity > Task)</th>
+                        <!-- Nagłówki czasu zostaną wstrzyknięte przez JS -->
+                    </tr>
+                </thead>
+                <tbody id="gantt-body">
+                    <!-- Wiersze zadań zostaną wstrzyknięte przez JS -->
+                </tbody>
+            </table>
+        </div>
+
+        <div id="side-panel" class="fixed top-0 right-0 w-96 h-full bg-white shadow-2xl z-50 flex flex-col border-l border-slate-200">
+            <div class="bg-slate-100 p-4 border-b flex justify-between items-center mt-16">
+                <h2 class="font-bold text-slate-800 text-lg">Aktualizacja Zadania</h2>
+                <button onclick="closePanel()" class="text-slate-500 hover:text-slate-800">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-1">
+                <input type="hidden" id="task-id">
+                
+                <div class="mb-4">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase">Nazwa Zadania</label>
+                    <div id="task-name-display" class="mt-1 text-sm font-medium text-slate-800 bg-slate-50 p-2 rounded border"></div>
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Postęp prac: <span id="progress-val" class="text-blue-600">0%</span></label>
+                    <input type="range" id="task-progress" min="0" max="100" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer" oninput="document.getElementById('progress-val').innerText = this.value + '%'">
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-xs font-semibold text-orange-600 uppercase mb-1">Ryzyka (Risks) & Problemy (Issues)</label>
+                    <textarea id="task-risks" rows="4" class="w-full border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-orange-200 outline-none" placeholder="Opisz zidentyfikowane ryzyka..."></textarea>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-xs font-semibold text-purple-600 uppercase mb-1">Zależności (Dependencies)</label>
+                    <textarea id="task-deps" rows="3" class="w-full border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-purple-200 outline-none" placeholder="Czego brakuje do rozpoczęcia/zakończenia?"></textarea>
+                </div>
+            </div>
+
+            <div class="p-4 border-t bg-slate-50 flex justify-end gap-3">
+                <button onclick="closePanel()" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded font-medium transition-colors">Anuluj</button>
+                <button onclick="saveTask()" class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded font-medium shadow transition-colors">Zapisz Zmiany</button>
+            </div>
+        </div>
+        
+        <div id="panel-overlay" onclick="closePanel()" class="fixed inset-0 bg-black bg-opacity-20 z-40 hidden mt-16"></div>
+
+    </main>
+
+    <script>
+        const projectData = [
+            {
+                ws: "1. Core Platform Replatforming",
+                activities: [
+                    {
+                        act: "1.1 Discovery & Requirements",
+                        tasks: [
+                            { id: "t1", name: "Stakeholder Interviews", start: 1, end: 3, progress: 100, risks: "", deps: "" },
+                            { id: "t2", name: "Define As-Is Architecture", start: 2, end: 4, progress: 75, risks: "Brak dostępu do starych repozytoriów", deps: "Zakończenie t1" },
+                            { id: "t3", name: "To-Be Architecture Sign-off", start: 4, end: 5, progress: 0, risks: "", deps: "t2" }
+                        ]
+                    },
+                    {
+                        act: "1.2 Environment Setup",
+                        tasks: [
+                            { id: "t4", name: "Cloud Infrastructure Provisioning", start: 5, end: 7, progress: 10, risks: "Opóźnienia w dziale security", deps: "" },
+                            { id: "t5", name: "CI/CD Pipeline Configuration", start: 6, end: 8, progress: 0, risks: "", deps: "t4" }
+                        ]
+                    }
+                ]
+            },
+            {
+                ws: "2. Common VOC Implementation",
+                activities: [
+                    {
+                        act: "2.1 Survey Design",
+                        tasks: [
+                            { id: "t6", name: "Drafting Questions", start: 3, end: 5, progress: 100, risks: "", deps: "" },
+                            { id: "t7", name: "Localization & Translation", start: 5, end: 8, progress: 40, risks: "Tłumaczenia na rynek APAC opóźnione", deps: "t6" }
+                        ]
+                    },
+                    {
+                        act: "2.2 Integration",
+                        tasks: [
+                            { id: "t8", name: "CRM API Integration", start: 8, end: 12, progress: 0, risks: "Limity zapytań API", deps: "t5, t7" },
+                            { id: "t9", name: "UAT Testing", start: 13, end: 15, progress: 0, risks: "", deps: "t8" },
+                            { id: "t10", name: "Go-Live", start: 16, end: 16, progress: 0, risks: "Wymaga zgody zarządu", deps: "t9" }
+                        ]
+                    }
+                ]
+            }
+        ];
+
+        let taskMap = {};
+
+        function renderGantt() {
+            // Wypełnianie nagłówków (T1-T16)
+            const headerRow = document.getElementById('gantt-header');
+            // Czyść nagłówki poza pierwszym
+            while (headerRow.children.length > 1) {
+                headerRow.removeChild(headerRow.lastChild);
+            }
+            
+            for(let i=1; i<=16; i++) {
+                const th = document.createElement('th');
+                th.className = "p-2 border-b border-slate-600 border-r border-slate-700";
+                th.innerText = `T${i}`;
+                headerRow.appendChild(th);
+            }
+
+            const tbody = document.getElementById('gantt-body');
+            tbody.innerHTML = '';
+            taskMap = {};
+
+            projectData.forEach(ws => {
+                tbody.innerHTML += `
+                    <tr class="row-workstream">
+                        <td colspan="17" class="p-2 border-b border-slate-300 shadow-sm">${ws.ws}</td>
+                    </tr>`;
+                
+                ws.activities.forEach(act => {
+                    tbody.innerHTML += `
+                        <tr class="row-activity">
+                            <td colspan="17" class="p-2 border-b border-slate-200 text-sm border-l-4 border-slate-400">${act.act}</td>
+                        </tr>`;
+                    
+                    act.tasks.forEach(task => {
+                        taskMap[task.id] = task;
+                        const duration = task.end - task.start + 1;
+                        const hasRisk = task.risks.trim().length > 0;
+                        const riskIcon = hasRisk ? `<span title="Aktywne Ryzyko!" class="text-orange-500 font-bold ml-2">⚠️</span>` : '';
+                        
+                        let tr = `<tr class="border-b border-slate-100 task-row hover:bg-slate-50">`;
+                        
+                        tr += `<td class="p-2 text-sm text-slate-700 task-cell border-r border-slate-200 border-l-4 border-white" onclick="openPanel('${task.id}')">
+                                ${task.name} <span class="text-xs text-slate-400 ml-2">(${task.progress}%)</span> ${riskIcon}
+                               </td>`;
+                        
+                        for(let i=1; i<=16; i++) {
+                            if (i >= task.start && i <= task.end) {
+                                let passedCells = (task.progress / 100) * duration;
+                                let currentCellIndex = i - task.start + 1;
+                                
+                                let bgClass = 'bar-planned';
+                                if (currentCellIndex <= passedCells + 0.5) bgClass = 'bar-progress';
+                                
+                                let borderClass = 'border-r border-white';
+                                if (i === task.start) borderClass += ' rounded-l-md';
+                                if (i === task.end) borderClass += ' rounded-r-md';
+
+                                tr += `<td class="p-1 cursor-pointer" onclick="openPanel('${task.id}')">
+                                        <div class="h-6 w-full ${bgClass} ${borderClass} shadow-sm transition-all hover:opacity-80"></div>
+                                       </td>`;
+                            } else {
+                                tr += `<td class="border-r border-slate-100 bg-white bg-opacity-50"></td>`;
+                            }
+                        }
+                        tr += `</tr>`;
+                        tbody.insertAdjacentHTML('beforeend', tr);
+                    });
+                });
+            });
+        }
+
+        function openPanel(taskId) {
+            const task = taskMap[taskId];
+            if (!task) return;
+
+            document.getElementById('task-id').value = task.id;
+            document.getElementById('task-name-display').innerText = task.name;
+            document.getElementById('task-progress').value = task.progress;
+            document.getElementById('progress-val').innerText = task.progress + '%';
+            document.getElementById('task-risks').value = task.risks;
+            document.getElementById('task-deps').value = task.deps;
+
+            document.getElementById('side-panel').classList.add('open');
+            document.getElementById('panel-overlay').classList.remove('hidden');
+        }
+
+        function closePanel() {
+            document.getElementById('side-panel').classList.remove('open');
+            document.getElementById('panel-overlay').classList.add('hidden');
+        }
+
+        function saveTask() {
+            const taskId = document.getElementById('task-id').value;
+            const task = taskMap[taskId];
+            
+            if (task) {
+                task.progress = parseInt(document.getElementById('task-progress').value);
+                task.risks = document.getElementById('task-risks').value;
+                task.deps = document.getElementById('task-deps').value;
+                
+                renderGantt();
+                closePanel();
+            }
+        }
+
+        function exportCSV() {
+            let csvContent = "Workstream,Activity,Task,Start Week,End Week,Progress (%),Risks,Dependencies\n";
+            
+            projectData.forEach(ws => {
+                ws.activities.forEach(act => {
+                    act.tasks.forEach(task => {
+                        const escapeCSV = (str) => `"${String(str).replace(/"/g, '""')}"`;
+                        
+                        const row = [
+                            escapeCSV(ws.ws),
+                            escapeCSV(act.act),
+                            escapeCSV(task.name),
+                            `T${task.start}`,
+                            `T${task.end}`,
+                            task.progress,
+                            escapeCSV(task.risks),
+                            escapeCSV(task.deps)
+                        ];
+                        
+                        csvContent += row.join(",") + "\n";
+                    });
+                });
+            });
+
+            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute("href", url);
+            link.setAttribute("download", "Live_Replatforming_Plan_Gantt_Export.csv");
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderGantt();
+        });
+    </script>
+</body>
+</html>
