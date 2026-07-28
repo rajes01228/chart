@@ -3,290 +3,316 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gantt Dashboard - Live Replatforming Plan</title>
+    <title>Live Replatforming Plan - Gantt</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; }
-        .table-container { overflow-x: auto; max-height: calc(100vh - 120px); }
-        th { position: sticky; top: 0; background-color: #1e293b; color: white; z-index: 10; font-size: 0.85rem;}
-        td, th { min-width: 40px; text-align: center; }
-        td:first-child, th:first-child { min-width: 350px; text-align: left; position: sticky; left: 0; z-index: 20; background-color: white; border-right: 2px solid #cbd5e1; }
-        th:first-child { background-color: #1e293b; z-index: 30; }
-        .row-workstream td { background-color: #e2e8f0; font-weight: 700; color: #334155; text-align: left; position: sticky; left:0;}
-        .row-activity td { background-color: #f1f5f9; font-weight: 600; color: #475569; padding-left: 1.5rem; text-align: left; position: sticky; left:0;}
-        .task-cell { cursor: pointer; transition: background-color 0.2s; padding-left: 2.5rem !important;}
-        .task-row:hover td:first-child { background-color: #f8fafc; }
-        .bar-planned { background-color: #bfdbfe; }
-        .bar-progress { background-color: #2563eb; }
-        
-        #side-panel { transform: translateX(100%); transition: transform 0.3s ease-in-out; }
-        #side-panel.open { transform: translateX(0); }
+        /* Niestandardowy pasek przewijania dla lepszego wyglądu */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        body { margin: 0; overflow: hidden; }
     </style>
 </head>
-<body class="h-screen flex flex-col overflow-hidden">
+<body class="bg-gray-50">
+    <div id="root"></div>
 
-    <header class="bg-slate-800 text-white p-4 flex justify-between items-center shadow-md z-40 relative">
-        <div>
-            <h1 class="text-xl font-bold">Dashboard Projektowy: Live Replatforming Plan</h1>
-            <p class="text-xs text-slate-300">Wizualizacja kolumn A-C (Zadania) oraz O-AD (Timeline T1-T16)</p>
-        </div>
-        <button onclick="exportCSV()" class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 text-sm font-semibold transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Eksportuj do CSV
-        </button>
-    </header>
+    <script type="text/babel">
+        const { useState, useMemo } = React;
 
-    <main class="flex-1 flex relative overflow-hidden">
-        
-        <div class="flex-1 table-container relative w-full h-full pb-10">
-            <table class="w-full border-collapse">
-                <thead>
-                    <tr id="gantt-header">
-                        <th class="p-3 border-b border-slate-600">Struktura Zadań (Workstream > Activity > Task)</th>
-                        <!-- Nagłówki czasu zostaną wstrzyknięte przez JS -->
-                    </tr>
-                </thead>
-                <tbody id="gantt-body">
-                    <!-- Wiersze zadań zostaną wstrzyknięte przez JS -->
-                </tbody>
-            </table>
-        </div>
+        // Zamienniki dla ikon Lucide-React w czystym SVG
+        const ChevronDown = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="6 9 12 15 18 9"/></svg>;
+        const ChevronRight = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="9 18 15 12 9 6"/></svg>;
+        const AlertTriangle = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
+        const LinkIcon = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>;
+        const Edit = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
+        const Save = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>;
+        const X = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+        const CheckCircle2 = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>;
+        const BarChart3 = ({size=24, className=""}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>;
 
-        <div id="side-panel" class="fixed top-0 right-0 w-96 h-full bg-white shadow-2xl z-50 flex flex-col border-l border-slate-200">
-            <div class="bg-slate-100 p-4 border-b flex justify-between items-center mt-16">
-                <h2 class="font-bold text-slate-800 text-lg">Aktualizacja Zadania</h2>
-                <button onclick="closePanel()" class="text-slate-500 hover:text-slate-800">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-            </div>
-            
-            <div class="p-6 overflow-y-auto flex-1">
-                <input type="hidden" id="task-id">
-                
-                <div class="mb-4">
-                    <label class="block text-xs font-semibold text-slate-500 uppercase">Nazwa Zadania</label>
-                    <div id="task-name-display" class="mt-1 text-sm font-medium text-slate-800 bg-slate-50 p-2 rounded border"></div>
-                </div>
+        const TIME_COLUMNS = Array.from({ length: 16 }, (_, i) => `T${i + 1}`);
 
-                <div class="mb-6">
-                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Postęp prac: <span id="progress-val" class="text-blue-600">0%</span></label>
-                    <input type="range" id="task-progress" min="0" max="100" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer" oninput="document.getElementById('progress-val').innerText = this.value + '%'">
-                </div>
-
-                <div class="mb-4">
-                    <label class="block text-xs font-semibold text-orange-600 uppercase mb-1">Ryzyka (Risks) & Problemy (Issues)</label>
-                    <textarea id="task-risks" rows="4" class="w-full border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-orange-200 outline-none" placeholder="Opisz zidentyfikowane ryzyka..."></textarea>
-                </div>
-
-                <div class="mb-4">
-                    <label class="block text-xs font-semibold text-purple-600 uppercase mb-1">Zależności (Dependencies)</label>
-                    <textarea id="task-deps" rows="3" class="w-full border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-purple-200 outline-none" placeholder="Czego brakuje do rozpoczęcia/zakończenia?"></textarea>
-                </div>
-            </div>
-
-            <div class="p-4 border-t bg-slate-50 flex justify-end gap-3">
-                <button onclick="closePanel()" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded font-medium transition-colors">Anuluj</button>
-                <button onclick="saveTask()" class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded font-medium shadow transition-colors">Zapisz Zmiany</button>
-            </div>
-        </div>
-        
-        <div id="panel-overlay" onclick="closePanel()" class="fixed inset-0 bg-black bg-opacity-20 z-40 hidden mt-16"></div>
-
-    </main>
-
-    <script>
-        const projectData = [
-            {
-                ws: "1. Core Platform Replatforming",
-                activities: [
-                    {
-                        act: "1.1 Discovery & Requirements",
-                        tasks: [
-                            { id: "t1", name: "Stakeholder Interviews", start: 1, end: 3, progress: 100, risks: "", deps: "" },
-                            { id: "t2", name: "Define As-Is Architecture", start: 2, end: 4, progress: 75, risks: "Brak dostępu do starych repozytoriów", deps: "Zakończenie t1" },
-                            { id: "t3", name: "To-Be Architecture Sign-off", start: 4, end: 5, progress: 0, risks: "", deps: "t2" }
-                        ]
-                    },
-                    {
-                        act: "1.2 Environment Setup",
-                        tasks: [
-                            { id: "t4", name: "Cloud Infrastructure Provisioning", start: 5, end: 7, progress: 10, risks: "Opóźnienia w dziale security", deps: "" },
-                            { id: "t5", name: "CI/CD Pipeline Configuration", start: 6, end: 8, progress: 0, risks: "", deps: "t4" }
-                        ]
-                    }
-                ]
-            },
-            {
-                ws: "2. Common VOC Implementation",
-                activities: [
-                    {
-                        act: "2.1 Survey Design",
-                        tasks: [
-                            { id: "t6", name: "Drafting Questions", start: 3, end: 5, progress: 100, risks: "", deps: "" },
-                            { id: "t7", name: "Localization & Translation", start: 5, end: 8, progress: 40, risks: "Tłumaczenia na rynek APAC opóźnione", deps: "t6" }
-                        ]
-                    },
-                    {
-                        act: "2.2 Integration",
-                        tasks: [
-                            { id: "t8", name: "CRM API Integration", start: 8, end: 12, progress: 0, risks: "Limity zapytań API", deps: "t5, t7" },
-                            { id: "t9", name: "UAT Testing", start: 13, end: 15, progress: 0, risks: "", deps: "t8" },
-                            { id: "t10", name: "Go-Live", start: 16, end: 16, progress: 0, risks: "Wymaga zgody zarządu", deps: "t9" }
-                        ]
-                    }
-                ]
-            }
+        const initialTasks = [
+          { id: '1', workstream: '1. Core Platform', activity: '1.1 Infrastructure', task: 'Setup Cloud Environments (Dev, Stage)', startCol: 0, endCol: 2, progress: 100, risks: '', dependencies: '' },
+          { id: '2', workstream: '1. Core Platform', activity: '1.1 Infrastructure', task: 'Configure CI/CD Pipelines', startCol: 1, endCol: 3, progress: 75, risks: 'Możliwe opóźnienia w dostępie do repozytoriów security.', dependencies: 'Zależność od zespołu DevOps' },
+          { id: '3', workstream: '1. Core Platform', activity: '1.2 Database Migration', task: 'Data Mapping & Profiling', startCol: 2, endCol: 5, progress: 30, risks: '', dependencies: 'Wymaga zrzutu danych z systemu Legacy' },
+          { id: '4', workstream: '1. Core Platform', activity: '1.2 Database Migration', task: 'Initial Data Load (UAT)', startCol: 5, endCol: 7, progress: 0, risks: 'Ryzyko niskiej jakości danych', dependencies: '' },
+          { id: '5', workstream: '2. Common Services', activity: '2.1 API Gateway', task: 'API Gateway Architecture Design', startCol: 0, endCol: 2, progress: 100, risks: '', dependencies: '' },
+          { id: '6', workstream: '2. Common Services', activity: '2.1 API Gateway', task: 'Implementation of Authentication APIs', startCol: 3, endCol: 8, progress: 40, risks: 'Złożoność integracji z systemem SSO', dependencies: 'API Gateway Design' },
+          { id: '7', workstream: '2. Common Services', activity: '2.2 Microservices', task: 'User Management Service', startCol: 4, endCol: 9, progress: 10, risks: '', dependencies: '' },
+          { id: '8', workstream: '3. Frontend & VOC', activity: '3.1 UI Framework', task: 'Design System Implementation', startCol: 1, endCol: 6, progress: 60, risks: '', dependencies: '' },
+          { id: '9', workstream: '3. Frontend & VOC', activity: '3.2 VOC Implementation', task: 'Voice of Customer Dashboard', startCol: 7, endCol: 12, progress: 0, risks: 'Brak zatwierdzonych makiet', dependencies: 'Wymaga zatwierdzenia Design Systemu' },
+          { id: '10', workstream: '3. Frontend & VOC', activity: '3.2 VOC Implementation', task: 'User Feedback Forms', startCol: 9, endCol: 14, progress: 0, risks: '', dependencies: 'API Gateway' },
+          { id: '11', workstream: '4. Testing & QA', activity: '4.1 E2E Testing', task: 'Test Scenarios Definition', startCol: 8, endCol: 11, progress: 0, risks: '', dependencies: '' },
+          { id: '12', workstream: '4. Testing & QA', activity: '4.1 E2E Testing', task: 'UAT Execution', startCol: 12, endCol: 15, progress: 0, risks: 'Ryzyko braku zasobów biznesowych na testy', dependencies: 'Wszystkie moduły Core i Frontend' },
         ];
 
-        let taskMap = {};
+        function App() {
+          const [tasks, setTasks] = useState(initialTasks);
+          const [expandedWorkstreams, setExpandedWorkstreams] = useState({});
+          const [expandedActivities, setExpandedActivities] = useState({});
+          const [selectedTask, setSelectedTask] = useState(null);
+          const [editForm, setEditForm] = useState(null);
 
-        function renderGantt() {
-            // Wypełnianie nagłówków (T1-T16)
-            const headerRow = document.getElementById('gantt-header');
-            // Czyść nagłówki poza pierwszym
-            while (headerRow.children.length > 1) {
-                headerRow.removeChild(headerRow.lastChild);
-            }
-            
-            for(let i=1; i<=16; i++) {
-                const th = document.createElement('th');
-                th.className = "p-2 border-b border-slate-600 border-r border-slate-700";
-                th.innerText = `T${i}`;
-                headerRow.appendChild(th);
-            }
-
-            const tbody = document.getElementById('gantt-body');
-            tbody.innerHTML = '';
-            taskMap = {};
-
-            projectData.forEach(ws => {
-                tbody.innerHTML += `
-                    <tr class="row-workstream">
-                        <td colspan="17" class="p-2 border-b border-slate-300 shadow-sm">${ws.ws}</td>
-                    </tr>`;
-                
-                ws.activities.forEach(act => {
-                    tbody.innerHTML += `
-                        <tr class="row-activity">
-                            <td colspan="17" class="p-2 border-b border-slate-200 text-sm border-l-4 border-slate-400">${act.act}</td>
-                        </tr>`;
-                    
-                    act.tasks.forEach(task => {
-                        taskMap[task.id] = task;
-                        const duration = task.end - task.start + 1;
-                        const hasRisk = task.risks.trim().length > 0;
-                        const riskIcon = hasRisk ? `<span title="Aktywne Ryzyko!" class="text-orange-500 font-bold ml-2">⚠️</span>` : '';
-                        
-                        let tr = `<tr class="border-b border-slate-100 task-row hover:bg-slate-50">`;
-                        
-                        tr += `<td class="p-2 text-sm text-slate-700 task-cell border-r border-slate-200 border-l-4 border-white" onclick="openPanel('${task.id}')">
-                                ${task.name} <span class="text-xs text-slate-400 ml-2">(${task.progress}%)</span> ${riskIcon}
-                               </td>`;
-                        
-                        for(let i=1; i<=16; i++) {
-                            if (i >= task.start && i <= task.end) {
-                                let passedCells = (task.progress / 100) * duration;
-                                let currentCellIndex = i - task.start + 1;
-                                
-                                let bgClass = 'bar-planned';
-                                if (currentCellIndex <= passedCells + 0.5) bgClass = 'bar-progress';
-                                
-                                let borderClass = 'border-r border-white';
-                                if (i === task.start) borderClass += ' rounded-l-md';
-                                if (i === task.end) borderClass += ' rounded-r-md';
-
-                                tr += `<td class="p-1 cursor-pointer" onclick="openPanel('${task.id}')">
-                                        <div class="h-6 w-full ${bgClass} ${borderClass} shadow-sm transition-all hover:opacity-80"></div>
-                                       </td>`;
-                            } else {
-                                tr += `<td class="border-r border-slate-100 bg-white bg-opacity-50"></td>`;
-                            }
-                        }
-                        tr += `</tr>`;
-                        tbody.insertAdjacentHTML('beforeend', tr);
-                    });
-                });
+          const groupedData = useMemo(() => {
+            const grouped = {};
+            tasks.forEach(task => {
+              if (!grouped[task.workstream]) grouped[task.workstream] = {};
+              if (!grouped[task.workstream][task.activity]) grouped[task.workstream][task.activity] = [];
+              grouped[task.workstream][task.activity].push(task);
             });
+            return grouped;
+          }, [tasks]);
+
+          const toggleWorkstream = (ws) => setExpandedWorkstreams(prev => ({ ...prev, [ws]: !prev[ws] }));
+          const toggleActivity = (act) => setExpandedActivities(prev => ({ ...prev, [act]: !prev[act] }));
+          
+          const handleTaskClick = (task) => {
+            setSelectedTask(task);
+            setEditForm({ ...task });
+          };
+
+          const handleSaveTask = () => {
+            setTasks(prev => prev.map(t => t.id === editForm.id ? editForm : t));
+            setSelectedTask(null);
+            setEditForm(null);
+          };
+
+          const getStatusColor = (progress) => {
+            if (progress === 100) return 'bg-emerald-500';
+            if (progress > 0) return 'bg-blue-500';
+            return 'bg-gray-300';
+          };
+
+          const overallProgress = useMemo(() => {
+            if (tasks.length === 0) return 0;
+            const total = tasks.reduce((acc, task) => acc + parseInt(task.progress || 0), 0);
+            return Math.round(total / tasks.length);
+          }, [tasks]);
+
+          const activeRisks = tasks.filter(t => t.risks && t.risks.length > 0).length;
+
+          return (
+            <div className="h-screen bg-gray-50 p-4 font-sans text-slate-800 flex flex-col">
+              <header className="bg-white rounded-xl shadow-sm p-4 md:p-6 mb-4 border border-slate-200 shrink-0">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div>
+                    <h1 className="text-xl md:text-2xl font-bold text-slate-900 flex items-center gap-2">
+                      <BarChart3 className="text-blue-600" size={24} />
+                      Live Replatforming Plan
+                    </h1>
+                    <p className="text-slate-500 text-sm mt-1">Interaktywny widok Gantt / Rejestr RAID</p>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 flex flex-col items-center min-w-[100px] md:min-w-[120px]">
+                      <span className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Postęp</span>
+                      <span className="text-xl font-bold text-blue-900">{overallProgress}%</span>
+                    </div>
+                    <div className="bg-amber-50 px-4 py-2 rounded-lg border border-amber-100 flex flex-col items-center min-w-[100px] md:min-w-[120px]">
+                      <span className="text-xs font-semibold text-amber-600 uppercase tracking-wider">Ryzyka</span>
+                      <span className="text-xl font-bold text-amber-900 flex items-center gap-1">
+                        <AlertTriangle size={18} className="text-amber-600"/> {activeRisks}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </header>
+
+              <div className="flex-1 flex gap-4 overflow-hidden">
+                <div className={`flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden transition-all duration-300 ${selectedTask ? 'hidden lg:flex w-2/3' : 'w-full'}`}>
+                  
+                  <div className="flex border-b border-slate-200 bg-slate-50">
+                    <div className="w-[300px] md:w-[450px] flex-shrink-0 border-r border-slate-200 p-3 font-semibold text-sm text-slate-700">
+                      Struktura Projektu
+                    </div>
+                    <div className="flex-1 flex overflow-hidden">
+                      {TIME_COLUMNS.map((col, idx) => (
+                        <div key={idx} className="flex-1 min-w-[30px] md:min-w-[40px] border-r border-slate-200 p-2 text-center text-xs font-semibold text-slate-500">
+                          {col}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="overflow-y-auto flex-1 pb-10">
+                    {Object.entries(groupedData).map(([workstream, activities]) => {
+                      const isWsExpanded = expandedWorkstreams[workstream] !== false;
+                      
+                      return (
+                        <React.Fragment key={workstream}>
+                          <div className="flex bg-slate-800 text-white border-b border-slate-700">
+                            <div className="w-[300px] md:w-[450px] flex-shrink-0 p-2 text-sm font-bold flex items-center gap-2 cursor-pointer hover:bg-slate-700 transition-colors" onClick={() => toggleWorkstream(workstream)}>
+                              {isWsExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                              <span className="truncate">{workstream}</span>
+                            </div>
+                            <div className="flex-1 bg-slate-100/10"></div>
+                          </div>
+
+                          {isWsExpanded && Object.entries(activities).map(([activity, wTasks]) => {
+                            const isActExpanded = expandedActivities[activity] !== false;
+
+                            return (
+                              <React.Fragment key={activity}>
+                                <div className="flex bg-slate-100 border-b border-slate-200">
+                                  <div className="w-[300px] md:w-[450px] flex-shrink-0 p-2 pl-6 md:pl-8 text-sm font-semibold text-slate-700 flex items-center gap-2 cursor-pointer hover:bg-slate-200 transition-colors" onClick={() => toggleActivity(activity)}>
+                                    {isActExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                    <span className="truncate">{activity}</span>
+                                  </div>
+                                  <div className="flex-1 border-b border-slate-100"></div>
+                                </div>
+
+                                {isActExpanded && wTasks.map(task => {
+                                  const hasRisk = task.risks && task.risks.length > 0;
+                                  const hasDep = task.dependencies && task.dependencies.length > 0;
+                                  
+                                  return (
+                                    <div key={task.id} className={`flex border-b border-slate-100 group cursor-pointer hover:bg-blue-50 transition-colors ${selectedTask?.id === task.id ? 'bg-blue-50' : ''}`} onClick={() => handleTaskClick(task)}>
+                                      <div className="w-[300px] md:w-[450px] flex-shrink-0 border-r border-slate-200 p-2 pl-10 md:pl-14 flex items-center justify-between">
+                                        <span className="text-sm text-slate-600 truncate mr-2 font-medium" title={task.task}>{task.task}</span>
+                                        <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
+                                          {hasDep && <LinkIcon size={14} className="text-blue-400" title="Posiada zależności" />}
+                                          {hasRisk && <AlertTriangle size={14} className="text-amber-500" title="Zgłoszone ryzyko" />}
+                                          <span className="text-xs font-bold text-slate-400 w-8 md:w-10 text-right">{task.progress}%</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex-1 flex relative py-1">
+                                        {TIME_COLUMNS.map((_, idx) => (
+                                          <div key={idx} className="flex-1 border-r border-slate-100 border-dashed"></div>
+                                        ))}
+                                        
+                                        <div 
+                                          className={`absolute top-2 bottom-2 rounded-md shadow-sm flex items-center px-1 md:px-2 text-[10px] md:text-xs text-white font-medium overflow-hidden ${getStatusColor(task.progress)} opacity-90 group-hover:opacity-100 transition-all`}
+                                          style={{
+                                            left: `${(task.startCol / 16) * 100}%`,
+                                            width: `${((task.endCol - task.startCol + 1) / 16) * 100}%`
+                                          }}
+                                        >
+                                          {task.progress === 100 && <CheckCircle2 size={12} className="mr-1 hidden md:block opacity-70" />}
+                                          <div className="absolute bottom-0 left-0 h-1 bg-white/30" style={{ width: `${task.progress}%` }}></div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </React.Fragment>
+                            );
+                          })}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {}
+                {selectedTask && (
+                  <div className="w-full lg:w-1/3 bg-white rounded-xl shadow-lg border border-slate-200 flex flex-col overflow-hidden transition-all">
+                    <div className="bg-slate-800 text-white p-4 flex justify-between items-center shrink-0">
+                      <h2 className="font-bold text-sm flex items-center gap-2">
+                        <Edit size={16} /> Edycja Zadania i RAID
+                      </h2>
+                      <button onClick={() => setSelectedTask(null)} className="hover:bg-slate-700 p-1 rounded-md transition-colors">
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-5">
+                      <div>
+                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Lokalizacja</p>
+                        <div className="text-sm text-slate-700">{editForm.workstream} &rarr; {editForm.activity}</div>
+                      </div>
+                      
+                      <div>
+                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Nazwa Zadania</p>
+                        <div className="text-lg font-bold text-slate-900">{editForm.task}</div>
+                      </div>
+
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <div className="flex justify-between items-center mb-2">
+                          <label className="text-sm font-semibold text-slate-800">Postęp realizacji</label>
+                          <span className="text-lg font-bold text-blue-600">{editForm.progress}%</span>
+                        </div>
+                        <input 
+                          type="range" min="0" max="100" step="5"
+                          value={editForm.progress}
+                          onChange={(e) => setEditForm({...editForm, progress: parseInt(e.target.value)})}
+                          className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-xs font-semibold text-slate-500 uppercase">Start (T1-T16)</label>
+                          <select 
+                            value={editForm.startCol}
+                            onChange={(e) => setEditForm({...editForm, startCol: parseInt(e.target.value)})}
+                            className="mt-1 block w-full rounded-md border border-slate-300 p-2 text-sm bg-white outline-none"
+                          >
+                            {TIME_COLUMNS.map((col, idx) => <option key={idx} value={idx}>{col}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-slate-500 uppercase">Koniec (T1-T16)</label>
+                          <select 
+                            value={editForm.endCol}
+                            onChange={(e) => setEditForm({...editForm, endCol: parseInt(e.target.value)})}
+                            className="mt-1 block w-full rounded-md border border-slate-300 p-2 text-sm bg-white outline-none"
+                          >
+                            {TIME_COLUMNS.map((col, idx) => <option key={idx} value={idx}>{col}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="flex items-center gap-2 text-sm font-semibold text-amber-700 mb-2">
+                          <AlertTriangle size={16} /> Ryzyka (Risks/Issues)
+                        </label>
+                        <textarea 
+                          rows="3"
+                          value={editForm.risks}
+                          onChange={(e) => setEditForm({...editForm, risks: e.target.value})}
+                          placeholder="Opisz zagrożenia lub powody opóźnienia..."
+                          className="w-full rounded-md border border-amber-200 bg-amber-50/30 p-3 text-sm outline-none resize-none"
+                        ></textarea>
+                      </div>
+
+                      <div>
+                        <label className="flex items-center gap-2 text-sm font-semibold text-blue-700 mb-2">
+                          <LinkIcon size={16} /> Zależności (Dependencies)
+                        </label>
+                        <textarea 
+                          rows="2"
+                          value={editForm.dependencies}
+                          onChange={(e) => setEditForm({...editForm, dependencies: e.target.value})}
+                          placeholder="Wypisz od kogo/czego zależy to zadanie..."
+                          className="w-full rounded-md border border-blue-200 bg-blue-50/30 p-3 text-sm outline-none resize-none"
+                        ></textarea>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3 shrink-0">
+                      <button onClick={() => setSelectedTask(null)} className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
+                        Anuluj
+                      </button>
+                      <button onClick={handleSaveTask} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm">
+                        <Save size={16} /> Zapisz Zmiany
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
         }
 
-        function openPanel(taskId) {
-            const task = taskMap[taskId];
-            if (!task) return;
-
-            document.getElementById('task-id').value = task.id;
-            document.getElementById('task-name-display').innerText = task.name;
-            document.getElementById('task-progress').value = task.progress;
-            document.getElementById('progress-val').innerText = task.progress + '%';
-            document.getElementById('task-risks').value = task.risks;
-            document.getElementById('task-deps').value = task.deps;
-
-            document.getElementById('side-panel').classList.add('open');
-            document.getElementById('panel-overlay').classList.remove('hidden');
-        }
-
-        function closePanel() {
-            document.getElementById('side-panel').classList.remove('open');
-            document.getElementById('panel-overlay').classList.add('hidden');
-        }
-
-        function saveTask() {
-            const taskId = document.getElementById('task-id').value;
-            const task = taskMap[taskId];
-            
-            if (task) {
-                task.progress = parseInt(document.getElementById('task-progress').value);
-                task.risks = document.getElementById('task-risks').value;
-                task.deps = document.getElementById('task-deps').value;
-                
-                renderGantt();
-                closePanel();
-            }
-        }
-
-        function exportCSV() {
-            let csvContent = "Workstream,Activity,Task,Start Week,End Week,Progress (%),Risks,Dependencies\n";
-            
-            projectData.forEach(ws => {
-                ws.activities.forEach(act => {
-                    act.tasks.forEach(task => {
-                        const escapeCSV = (str) => `"${String(str).replace(/"/g, '""')}"`;
-                        
-                        const row = [
-                            escapeCSV(ws.ws),
-                            escapeCSV(act.act),
-                            escapeCSV(task.name),
-                            `T${task.start}`,
-                            `T${task.end}`,
-                            task.progress,
-                            escapeCSV(task.risks),
-                            escapeCSV(task.deps)
-                        ];
-                        
-                        csvContent += row.join(",") + "\n";
-                    });
-                });
-            });
-
-            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            
-            link.setAttribute("href", url);
-            link.setAttribute("download", "Live_Replatforming_Plan_Gantt_Export.csv");
-            link.style.visibility = 'hidden';
-            
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            renderGantt();
-        });
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
