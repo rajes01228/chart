@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gantt Dashboard - Live Replatforming Plan</title>
+    <style>
+        /* CSS reset i podstawowe style wbudowane (brak zewnętrznych zależności) */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background-color: #f8fafc; 
+            color: #1e293b; 
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            overflow: hidden;
+        }
+        
+        /* Pasek górny */
+        header { 
+            background-color: #0f172a; 
+            color: white; 
+            padding: 1rem 1.5rem; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); 
+            z-index: 50; 
+        }
+        .header-titles h1 { font-size: 1.25rem; font-weight: bold; margin-bottom: 0.25rem; }
+        .header-titles p { font-size: 0.75rem; color: #94a3b8; }
+        
+        /* Przycisk eksportu */
+        .btn-export { 
+            background-color: #10b981; 
+            color: white; 
+            border: none; 
+            padding: 0.5rem 1rem; 
+            border-radius: 0.375rem; 
+            cursor: pointer; 
+            font-weight: 600; 
+            font-size: 0.875rem; 
+            transition: background-color 0.2s;
+        }
+        .btn-export:hover { background-color: #059669; }
+
+        /* Kontener Tabeli (Gantt) */
+        .gantt-container { 
+            flex: 1; 
+            overflow: auto; 
+            background: white; 
+            position: relative;
+        }
+        table { 
+            border-collapse: separate; 
+            border-spacing: 0; 
+            width: 100%; 
+            min-width: 1200px;
+        }
+        
+        /* Zamrożenie nagłówków i pierwszej kolumny */
+        th, td { 
+            border-bottom: 1px solid #e2e8f0; 
+            border-right: 1px solid #e2e8f0; 
+            padding: 0.75rem; 
+            text-align: center; 
+            font-size: 0.875rem;
+        }
+        thead th { 
+            position: sticky; 
+            top: 0; 
+            background-color: #1e293b; 
+            color: white; 
+            z-index: 20; 
+            font-weight: 600; 
+        }
+        tbody td:first-child, thead th:first-child { 
+            position: sticky; 
+            left: 0; 
+            z-index: 30; 
+            background-color: white; 
+            text-align: left; 
+            border-right: 2px solid #cbd5e1;
+            width: 350px;
+            min-width: 350px;
+            max-width: 350px;
+        }
+        thead th:first-child { 
+            z-index: 40; 
+            background-color: #0f172a; 
+        }
+
+        /* Kolory i style wierszy */
+        .row-ws td { background-color: #e2e8f0 !important; font-weight: 700; color: #0f172a; }
+        .row-act td { background-color: #f1f5f9 !important; font-weight: 600; color: #334155; padding-left: 1.5rem !important; }
+        
+        /* Interaktywne wiersze zadań */
+        .row-task { transition: background-color 0.2s; cursor: pointer; }
+        .row-task:hover td { background-color: #f8fafc; }
+        .row-task:hover td:first-child { background-color: #f1f5f9 !important; }
+        
+        .task-title { padding-left: 2.5rem !important; display: flex; justify-content: space-between; align-items: center; }
+        .progress-badge { font-size: 0.75rem; font-weight: bold; color: #3b82f6; }
+        .progress-100 { color: #10b981; }
+
+        /* Paski osi czasu (Timeline Bars) */
+        .cell-timeline { padding: 4px 0 !important; background-color: transparent; }
+        .bar-container { 
+            height: 24px; 
+            background-color: #dbeafe; 
+            border-radius: 4px; 
+            margin: 0 4px;
+            position: relative; 
+            overflow: hidden;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .bar-fill { 
+            height: 100%; 
+            background-color: #3b82f6; 
+            transition: width 0.3s; 
+        }
+        .bar-fill-done { background-color: #10b981; }
+
+        /* Znaczniki Ryzyka */
+        .risk-icon { 
+            background: #fee2e2; color: #dc2626; font-size: 0.65rem; padding: 2px 6px; 
+            border-radius: 12px; border: 1px solid #fca5a5; font-weight: bold; 
+            display: none; margin-left: 8px;
+        }
+        .has-risk .risk-icon { display: inline-block; }
+
+        /* Panel Boczny (RAID) */
+        .overlay { 
+            position: fixed; inset: 0; background: rgba(15,23,42,0.4); 
+            z-index: 60; display: none; opacity: 0; transition: opacity 0.3s; 
+        }
+        .overlay.active { display: block; opacity: 1; }
+        
+        .panel { 
+            position: fixed; top: 0; right: -400px; width: 400px; height: 100vh; 
+            background: white; z-index: 70; box-shadow: -5px 0 25px rgba(0,0,0,0.2); 
+            transition: right 0.3s ease; display: flex; flex-direction: column; 
+        }
+        .panel.active { right: 0; }
+        
+        .panel-header { 
+            padding: 1.25rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0; 
+            display: flex; justify-content: space-between; align-items: center; 
+        }
+        .panel-header h2 { font-size: 1.1rem; color: #0f172a; }
+        .btn-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #64748b; }
+        
+        .panel-content { padding: 1.5rem; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1.25rem; }
+        .form-group label { display: block; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 0.5rem; }
+        .task-name-display { padding: 0.75rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 0.375rem; font-weight: 600; color: #0f172a; }
+        
+        input[type="range"] { width: 100%; margin-top: 0.5rem; cursor: pointer; }
+        textarea { 
+            width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 0.375rem; 
+            font-family: inherit; font-size: 0.875rem; resize: vertical; outline: none; 
+        }
+        textarea:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
+        .risk-input { background: #fef2f2; border-color: #fecaca; }
+        .risk-input:focus { border-color: #ef4444; box-shadow: 0 0 0 2px rgba(239,68,68,0.2); }
+        
+        .panel-footer { padding: 1.25rem; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 0.75rem; }
+        .btn { padding: 0.5rem 1rem; border-radius: 0.375rem; font-weight: 600; font-size: 0.875rem; cursor: pointer; border: none; }
+        .btn-cancel { background: white; border: 1px solid #cbd5e1; color: #475569; }
+        .btn-save { background: #3b82f6; color: white; }
+
+        /* Toast notification */
+        .toast {
+            position: fixed; bottom: 20px; right: 20px; background: #1e293b; color: white;
+            padding: 12px 24px; border-radius: 8px; z-index: 100;
+            transform: translateY(100px); opacity: 0; transition: all 0.3s;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-titles">
+            <h1>Gantt Dashboard: Live Replatforming Plan</h1>
+            <p>Struktura: Workstream &rarr; Activity &rarr; Task | Oś czasu: T1 - T16</p>
+        </div>
+        <button class="btn-export" id="btnExport">Eksportuj do CSV</button>
+    </header>
+
+    <!-- Główna zawartość, z hardkodowanymi nagłówkami by działało bez JS -->
+    <div class="gantt-container">
+        <table id="ganttTable">
+            <thead>
+                <tr>
+                    <th>Struktura Projektu (Drzewo Zadań)</th>
+                    <th>T1</th><th>T2</th><th>T3</th><th>T4</th><th>T5</th><th>T6</th><th>T7</th><th>T8</th>
+                    <th>T9</th><th>T10</th><th>T11</th><th>T12</th><th>T13</th><th>T14</th><th>T15</th><th>T16</th>
+                </tr>
+            </thead>
+            <tbody id="ganttBody">
+                <!-- Wiersze zostaną bezpiecznie wstrzyknięte przez JavaScript -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Interaktywny Panel Boczny -->
+    <div class="overlay" id="overlay"></div>
+    <div class="panel" id="sidePanel">
+        <div class="panel-header">
+            <h2>Aktualizacja Zadania</h2>
+            <button class="btn-close" id="btnClosePanel">&times;</button>
+        </div>
+        
+        <div class="panel-content">
+            <input type="hidden" id="editTaskId">
+            
+            <div class="form-group">
+                <label>Nazwa Zadania</label>
+                <div class="task-name-display" id="editTaskName">Wybierz zadanie...</div>
+            </div>
+
+            <div class="form-group">
+                <label>Postęp Prac: <span id="editTaskProgressVal" class="progress-badge">0%</span></label>
+                <input type="range" id="editTaskProgress" min="0" max="100" step="5" value="0">
+            </div>
+
+            <div class="form-group">
+                <label style="color: #dc2626;">Zidentyfikowane Ryzyka (RAID)</label>
+                <textarea class="risk-input" id="editTaskRisks" rows="4" placeholder="Opisz powody opóźnień, problemy techniczne..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label style="color: #8b5cf6;">Zależności (Dependencies)</label>
+                <textarea id="editTaskDeps" rows="3" placeholder="Wymagane API, zgody biznesowe..."></textarea>
+            </div>
+        </div>
+        
+        <div class="panel-footer">
+            <button class="btn btn-cancel" id="btnCancel">Anuluj</button>
+            <button class="btn btn-save" id="btnSave">Zapisz status</button>
+        </div>
+    </div>
+
+    <div class="toast" id="toastMsg">Status zadania zaktualizowany!</div>
+
+    <script>
+        // Dane projektowe oparte na pliku Core_and_Common_VOC_Implementa_Live_Replatforming_Plan_V1_0.csv
+        const projectData = [
+            {
+                workstream: "1. Core Platform Replatforming",
+                activities: [
+                    {
+                        activity: "1.1 Discovery & Requirements",
+                        tasks: [
+                            { id: "t1", name: "Stakeholder Interviews", start: 1, end: 3, progress: 100, risks: "", deps: "" },
+                            { id: "t2", name: "Define As-Is Architecture", start: 2, end: 4, progress: 80, risks: "Brak dokumentacji ze starego systemu.", deps: "t1" },
+                            { id: "t3", name: "To-Be Architecture Sign-off", start: 4, end: 5, progress: 0, risks: "", deps: "t2" }
+                        ]
+                    },
+                    {
+                        activity: "1.2 Infrastructure Setup",
+                        tasks: [
+                            { id: "t4", name: "Cloud Environment Provisioning", start: 5, end: 7, progress: 30, risks: "Opóźnienia w procesie Security Review.", deps: "" },
+                            { id: "t5", name: "CI/CD Pipeline Configuration", start: 6, end: 8, progress: 0, risks: "", deps: "t4" }
+                        ]
+                    }
+                ]
+            },
+            {
+                workstream: "2. Common VOC Implementation",
+                activities: [
+                    {
+                        activity: "2.1 Survey Engine Configuration",
+                        tasks: [
+                            { id: "t6", name: "Drafting Questions", start: 3, end: 6, progress: 100, risks: "", deps: "" },
+                            { id: "t7", name: "Localization & Translation", start: 5, end: 9, progress: 40, risks: "Tłumaczenia na rynki APAC opóźnione.", deps: "t6" }
+                        ]
+                    },
+                    {
+                        activity: "2.2 Technical Integration",
+                        tasks: [
+                            { id: "t8", name: "CRM API Integration", start: 8, end: 12, progress: 0, risks: "", deps: "t5, t7" },
+                            { id: "t9", name: "User Acceptance Testing (UAT)", start: 13, end: 15, progress: 0, risks: "Ryzyko niedostępności testerów biznesowych.", deps: "t8" },
+                            { id: "t10", name: "Go-Live & Post-Launch Support", start: 16, end: 16, progress: 0, risks: "", deps: "t9" }
+                        ]
+                    }
+                ]
+            }
+        ];
+
+        const TOTAL_WEEKS = 16;
+        let taskLookup = {}; // Płaska mapa dla szybkiego dostępu
+
+        function initGantt() {
+            const tbody = document.getElementById('ganttBody');
+            let htmlContent = '';
+
+            projectData.forEach(ws => {
+                // Generuj wiersz Workstream
+                htmlContent += `<tr class="row-ws"><td colspan="${TOTAL_WEEKS + 1}">${ws.workstream}</td></tr>`;
+                
+                ws.activities.forEach(act => {
+                    // Generuj wiersz Activity
+                    htmlContent += `<tr class="row-act"><td colspan="${TOTAL_WEEKS + 1}">${act.activity}</td></tr>`;
+                    
+                    act.tasks.forEach(task => {
+                        // Dodaj do mapy wyszukiwania
+                        task.wsName = ws.workstream;
+                        task.actName = act.activity;
+                        taskLookup[task.id] = task;
+
+                        const hasRisk = task.risks.trim().length > 0;
+                        const riskClass = hasRisk ? 'has-risk' : '';
+                        const progressClass = task.progress === 100 ? 'progress-100' : '';
+                        
+                        // Komórka nazwy zadania
+                        htmlContent += `<tr class="row-task" data-id="${task.id}">
+                            <td class="task-title ${riskClass}">
+                                <div>${task.name} <span class="risk-icon" id="icon-${task.id}">⚠️ RYZYKO</span></div>
+                                <span class="progress-badge ${progressClass}" id="badge-${task.id}">${task.progress}%</span>
+                            </td>`;
+
+                        // Puste komórki przed rozpoczęciem zadania
+                        for (let w = 1; w < task.start; w++) {
+                            htmlContent += `<td></td>`;
+                        }
+
+                        // Komórka z paskiem osi czasu (colspan obliczony na podstawie czasu trwania)
+                        const duration = task.end - task.start + 1;
+                        const barFillClass = task.progress === 100 ? 'bar-fill-done' : '';
+                        
+                        htmlContent += `<td colspan="${duration}" class="cell-timeline">
+                            <div class="bar-container">
+                                <div class="bar-fill ${barFillClass}" id="bar-${task.id}" style="width: ${task.progress}%"></div>
+                            </div>
+                        </td>`;
+
+                        // Puste komórki po zakończeniu zadania
+                        for (let w = task.end + 1; w <= TOTAL_WEEKS; w++) {
+                            htmlContent += `<td></td>`;
+                        }
+                        
+                        htmlContent += `</tr>`;
+                    });
+                });
+            });
+
+            tbody.innerHTML = htmlContent;
+            attachRowListeners();
+        }
+
+        function attachRowListeners() {
+            // Dodawanie event listenerów do wierszy zadań
+            const taskRows = document.querySelectorAll('.row-task');
+            taskRows.forEach(row => {
+                row.addEventListener('click', function() {
+                    const taskId = this.getAttribute('data-id');
+                    openPanel(taskId);
+                });
+            });
+        }
+
+        // --- Logika Panelu Bocznego ---
+        function openPanel(taskId) {
+            const task = taskLookup[taskId];
+            if (!task) return;
+
+            // Wypełnianie danych
+            document.getElementById('editTaskId').value = task.id;
+            document.getElementById('editTaskName').innerText = task.name;
+            document.getElementById('editTaskProgress').value = task.progress;
+            document.getElementById('editTaskProgressVal').innerText = task.progress + '%';
+            document.getElementById('editTaskRisks').value = task.risks || "";
+            document.getElementById('editTaskDeps').value = task.deps || "";
+
+            // Otwieranie panelu
+            document.getElementById('overlay').classList.add('active');
+            document.getElementById('sidePanel').classList.add('active');
+        }
+
+        function closePanel() {
+            document.getElementById('overlay').classList.remove('active');
+            document.getElementById('sidePanel').classList.remove('active');
+        }
+
+        function saveTask() {
+            const taskId = document.getElementById('editTaskId').value;
+            const task = taskLookup[taskId];
+            
+            if (task) {
+                // Odczyt wartości z formularza
+                task.progress = parseInt(document.getElementById('editTaskProgress').value);
+                task.risks = document.getElementById('editTaskRisks').value;
+                task.deps = document.getElementById('editTaskDeps').value;
+
+                // 1. Aktualizacja Etykiety Postępu
+                const badgeEl = document.getElementById(`badge-${task.id}`);
+                badgeEl.innerText = task.progress + '%';
+                if(task.progress === 100) badgeEl.classList.add('progress-100');
+                else badgeEl.classList.remove('progress-100');
+
+                // 2. Aktualizacja Paska Gantta
+                const barEl = document.getElementById(`bar-${task.id}`);
+                barEl.style.width = task.progress + '%';
+                if(task.progress === 100) barEl.classList.add('bar-fill-done');
+                else barEl.classList.remove('bar-fill-done');
+
+                // 3. Aktualizacja Ikony Ryzyka
+                const rowEl = document.querySelector(`.row-task[data-id="${task.id}"] td:first-child`);
+                if (task.risks.trim().length > 0) {
+                    rowEl.classList.add('has-risk');
+                } else {
+                    rowEl.classList.remove('has-risk');
+                }
+
+                closePanel();
+                showToast();
+            }
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toastMsg');
+            toast.classList.add('show');
+            setTimeout(() => { toast.classList.remove('show'); }, 3000);
+        }
+
+        function exportCSV() {
+            let csvContent = "Workstream,Activity,Task,Start Week,End Week,Progress (%),Risks,Dependencies\n";
+            
+            Object.values(taskLookup).forEach(task => {
+                const escapeCSV = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+                
+                const row = [
+                    escapeCSV(task.wsName),
+                    escapeCSV(task.actName),
+                    escapeCSV(task.name),
+                    `T${task.start}`,
+                    `T${task.end}`,
+                    task.progress,
+                    escapeCSV(task.risks),
+                    escapeCSV(task.deps)
+                ];
+                
+                csvContent += row.join(",") + "\n";
+            });
+
+            // Dodanie BOM dla poprawnego kodowania polskich znaków w Excelu
+            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            
+            link.setAttribute("href", url);
+            link.setAttribute("download", "Live_Replatforming_Plan_Export.csv");
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Podpięcie zdarzeń statycznych elementów UI
+        document.getElementById('btnClosePanel').addEventListener('click', closePanel);
+        document.getElementById('btnCancel').addEventListener('click', closePanel);
+        document.getElementById('overlay').addEventListener('click', closePanel);
+        document.getElementById('btnSave').addEventListener('click', saveTask);
+        document.getElementById('btnExport').addEventListener('click', exportCSV);
+        
+        document.getElementById('editTaskProgress').addEventListener('input', function(e) {
+            document.getElementById('editTaskProgressVal').innerText = e.target.value + '%';
+        });
+
+        // Uruchomienie budowy aplikacji po załadowaniu struktury HTML
+        window.addEventListener('DOMContentLoaded', initGantt);
+
+    </script>
+</body>
+</html>
